@@ -77,10 +77,33 @@ sys_sleep(void)
 
 
 #ifdef LAB_PGTBL
+// this system call reports which pages have already been accessed.
+// It takes 3 args. Virtual address of the first user page to check,
+// number of pages to check and user address to a buffer to store result
+// in form of bitmask.
 int
 sys_pgaccess(void)
 {
-  // lab pgtbl: your code here.
+  uint64 start;
+  int npages;
+  uint64 bitmask_user_address;
+  uint64 bitmask_kernel = 0;
+
+  // parse args
+  if((argaddr(0, &start) < 0) || (argint(1, &npages) < 0) || (argaddr(2, &bitmask_user_address) < 0))
+    return -1;
+
+  for(int i = 0; i < npages; i++){
+    pte_t *pte = walk(myproc()->pagetable, start, 0);
+    if(*pte & PTE_A){
+      bitmask_kernel |= 1 << i;
+      *pte &= ~PTE_A; // null accessed bit
+    }
+    start += PGSIZE;
+  }
+  // copy the bitmask_kernel result to user address
+  if(copyout(myproc()->pagetable, bitmask_user_address,(char *)&bitmask_kernel, (npages+7)/8) < 0)
+    return -1;
   return 0;
 }
 #endif
