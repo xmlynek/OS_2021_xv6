@@ -1,0 +1,14 @@
+Which other xv6 system call(s) could be made faster using this shared page? Explain how.
+- This shared page contains pid info, so any other syscall(s) which might use this pid info.
+
+What does page 0 contain?
+- Page 0 contains text and data of init process
+
+What is in page 2?
+- Page 2 is process's stack
+
+When running in user mode, could the process read/write the memory mapped by page 1?
+- No, bcs its guard page that can not be read from user mode, PTE_U flag is not set
+
+What does the third to last page contain?
+- The heap
