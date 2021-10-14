@@ -121,6 +121,7 @@ panic(char *s)
   printf("panic: ");
   printf(s);
   printf("\n");
+  backtrace();
   panicked = 1; // freeze uart output from other CPUs
   for(;;)
     ;
@@ -131,4 +132,23 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+// Prints out addresses of function calls on the stack above from the current frame pointer
+void
+backtrace(void)
+{
+  // get frame pointer from s0
+  uint64 fp = r_fp();
+  // get upper and lower address of stack
+  uint64 top = PGROUNDUP(fp);
+  uint64 bottom = PGROUNDDOWN(fp);
+
+  printf("backtrace:\n");
+  while(fp < top && fp > bottom) {
+    // return address is at fixed offset -8 from the fp
+    printf("%p\n", *((uint64*)(fp-8)));
+    // previous/saved frame pointer is at fixed offset -16 from the fp
+    fp = *((uint64*)(fp-16));
+  }
 }
