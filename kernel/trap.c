@@ -77,9 +77,24 @@ usertrap(void)
     exit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    // if alarm_handler is present, enabled and tick_counter value == alarm_interval
+    // disable handler with 0 to prevent re-entrant calls to handler
+    // reset tick counter, save registers - they will be restored in sigreturn
+    if(p->alarm_handler != -1){
+      p->tick_counter++;
+      if(p->tick_counter == p->alarm_interval && p->enable_handler == 1){
+	p->enable_handler = 0;
+	p->tick_counter = 0;
+	// save registers before calling handler functin
+	p->saved_registers = *(p->trapframe);
+	p->trapframe->epc = p->alarm_handler;
+      } else{
+	p->trapframe-> a0 = p->saved_registers.a0;
+      }
+    }
     yield();
-
+  }
   usertrapret();
 }
 
