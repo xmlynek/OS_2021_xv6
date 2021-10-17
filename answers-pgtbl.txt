@@ -1,5 +1,5 @@
 Which other xv6 system call(s) could be made faster using this shared page? Explain how.
-- This shared page contains pid info, so any other syscall(s) which might use this pid info.
+- Fork, eliminating the need to copy all of the pages of the parent process. And any other systtem calls that access the kernel data.
 
 What does page 0 contain?
 - Page 0 contains text and data of init process
