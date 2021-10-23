@@ -120,6 +120,7 @@ sys_sigalarm(void)
 
 // This function is called after sigalarm to enable handler,
 // reset tick counter and restore saved registers.
+// Return value of reg a0 to make sure that reg a0 remains unchanged.
 uint64
 sys_sigreturn(void)
 {
@@ -128,5 +129,5 @@ sys_sigreturn(void)
   *(p->trapframe) = p->saved_registers;
   p->enable_handler = 1;
   p->tick_counter = 0;
-  return 0;
+  return p->trapframe->a0;
 }

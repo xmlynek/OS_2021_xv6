@@ -86,11 +86,9 @@ usertrap(void)
       if(p->tick_counter == p->alarm_interval && p->enable_handler == 1){
 	p->enable_handler = 0;
 	p->tick_counter = 0;
-	// save registers before calling handler functin
+	// save registers before calling handler function
 	p->saved_registers = *(p->trapframe);
 	p->trapframe->epc = p->alarm_handler;
-      } else{
-	p->trapframe-> a0 = p->saved_registers.a0;
       }
     }
     yield();
