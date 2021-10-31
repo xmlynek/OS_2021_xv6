@@ -6,6 +6,7 @@
 #include "defs.h"
 #include "fs.h"
 
+
 /*
  * the kernel's page table.
  */
@@ -14,6 +15,7 @@ pagetable_t kernel_pagetable;
 extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
+
 
 // Make a direct-map page table for the kernel.
 pagetable_t
@@ -291,40 +293,83 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
+// Given a parent process's page table,
+// remove write flag and add COW flag.
+// Map the child to the same physical address
+// with the same flags (PTE_COW, ~PTE_W).
 // returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+
     pa = PTE2PA(*pte);
+    if(*pte & PTE_W){
+      *pte ^= PTE_W;
+      *pte |= PTE_COW;
+    }
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       goto err;
     }
+    inc_ref((void*)pa);
   }
   return 0;
 
  err:
-  uvmunmap(new, 0, i / PGSIZE, 1);
+  uvmunmap(new, 0, i / PGSIZE, 0);
   return -1;
+}
+
+// Takes pagetable and virtual address as params,
+// checks whether pte is valid and has PTE_COW flag,
+// Allocates new memory where the data will be mapped
+// without PTE_COW flag and with PTE_W flag.
+// Returns 0 on success, -1 on failure.
+int
+uvmcow(pagetable_t pagetable, uint64 addr)
+{
+  pte_t *pte;
+  uint64 pa;
+  uint flags;
+  char *mem;
+
+  if(addr >= MAXVA)
+    return -1;
+
+  if((pte = walk(pagetable,PGROUNDDOWN(addr), 0)) == 0)
+    panic("uvmcow: pte should exist");
+  if((*pte & PTE_V) == 0)
+    panic("uvmcow: page not present");
+  if((*pte & PTE_COW) == 0){
+    printf("uvmcow: PTE_COW not set for 0x%p\n", addr);
+    return -1;
+  }
+  if((mem = kalloc()) == 0){
+    printf("uvmcow: kalloc failed\n");
+    return -1;
+  }
+  pa = PTE2PA(*pte);
+  flags = PTE_FLAGS(*pte);
+  flags ^= PTE_COW;
+  flags |= PTE_W;
+
+  memmove(mem, (char*)pa, PGSIZE);
+  uvmunmap(pagetable, PGROUNDDOWN(addr), 1, 1);
+  if(mappages(pagetable, PGROUNDDOWN(addr), PGSIZE, (uint64)mem, flags) != 0){
+    kfree(mem);
+    return -1;
+  }
+  return 0;
 }
 
 // mark a PTE invalid for user access.
@@ -348,8 +393,18 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   uint64 n, va0, pa0;
 
+  if(dstva >= MAXVA)
+    return -1;
+
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    pte_t *pte = walk(pagetable, va0, 0);
+    if(pte == 0)
+      return -1;
+    if((*pte & PTE_COW) != 0)
+      if(uvmcow(pagetable, va0) != 0)
+	panic("copyout: uvmcow failed");
+
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
