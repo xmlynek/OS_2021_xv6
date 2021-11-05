@@ -1,0 +1,2 @@
+When using insert with two threads without locks at the same time, one of them will be lost.
+There are no problems using single thread bcs its executed serially without any conflicts.
