@@ -91,7 +91,18 @@ bget(uint dev, uint blockno)
     }
   }
 
+  release(&bcache.bucket_lock[bucket]);
   acquire(&bcache.lock);
+  acquire(&bcache.bucket_lock[bucket]);
+
+  for(b = bcache.head[bucket].next; b != &bcache.head[bucket]; b = b->next){
+    if(b->dev == dev && b->blockno == blockno){
+      b->refcnt++;
+      release(&bcache.bucket_lock[bucket]);
+      acquiresleep(&b->lock);
+      return b;
+    }
+  }
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
