@@ -2,9 +2,13 @@
 #include "param.h"
 #include "memlayout.h"
 #include "riscv.h"
+#include "fs.h"
 #include "spinlock.h"
+#include "sleeplock.h"
+#include "file.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
 
 struct cpu cpus[NCPU];
 
@@ -289,6 +293,14 @@ fork(void)
   }
   np->sz = p->sz;
 
+  // copy VMAs
+  for(int i = 0; i < VMA_NUM; i++){
+    np->vma[i] = p->vma[i];
+    if(p->vma[i].address){
+      np->vma[i].f->ref++;
+    }
+  } 
+
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
 
@@ -343,6 +355,21 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+ for(int i = 0; i < VMA_NUM; i++){
+   // pte_t* pte;
+   if(p->vma[i].f == 0) continue;
+    int j = 0;
+  for(; j < p->vma[i].length; j+=PGSIZE){
+    if(walkaddr(p->pagetable, p->vma[i].address + j) != 0){
+      if(p->vma[i].flags == MAP_SHARED)
+         uvmunmap(p->pagetable, p->vma[i].address+j, 1, 1);
+    }
+  }
+  p->vma[i].address += p->vma[i].length;
+  p->vma[i].length -= j;
+
+  } 
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
